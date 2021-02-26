@@ -81,17 +81,6 @@ setstatus(char *str)
 }
 
 char *
-loadavg(void)
-{
-	double avgs[3];
-
-	if (getloadavg(avgs, 3) < 0)
-		return smprintf("");
-
-	return smprintf("%.2f %.2f %.2f", avgs[0], avgs[1], avgs[2]);
-}
-
-char *
 readfile(char *base, char *file)
 {
 	char *path, line[513];
@@ -112,63 +101,33 @@ readfile(char *base, char *file)
 	return smprintf("%s", line);
 }
 
-char *
-getbattery(char *base)
+char*
+strip(char *name)
 {
-	char *co, status;
-	int descap, remcap;
+	size_t size = strlen(name) - 1;
+	char *ret = malloc(size);
+	return strncpy(ret, name, size);
+}
 
-	descap = -1;
-	remcap = -1;
+char*
+gettemperature(char *base, char *sensorNameFile, char *sensorTempFile)
+{
+	char *sensorName, *sensorTemp;
 
-	co = readfile(base, "present");
-	if (co == NULL)
+	sensorName = readfile(base, sensorNameFile);
+	sensorTemp = readfile(base, sensorTempFile);
+
+	if(sensorName == NULL || sensorTemp == NULL)
 		return smprintf("");
-	if (co[0] != '1') {
-		free(co);
-		return smprintf("not present");
-	}
-	free(co);
-
-	co = readfile(base, "charge_full_design");
-	if (co == NULL) {
-		co = readfile(base, "energy_full_design");
-		if (co == NULL)
-			return smprintf("");
-	}
-	sscanf(co, "%d", &descap);
-	free(co);
-
-	co = readfile(base, "charge_now");
-	if (co == NULL) {
-		co = readfile(base, "energy_now");
-		if (co == NULL)
-			return smprintf("");
-	}
-	sscanf(co, "%d", &remcap);
-	free(co);
-
-	co = readfile(base, "status");
-	if (!strncmp(co, "Discharging", 11)) {
-		status = '-';
-	} else if(!strncmp(co, "Charging", 8)) {
-		status = '+';
-	} else {
-		status = '?';
-	}
-
-	if (remcap < 0 || descap < 0)
-		return smprintf("invalid");
-
-	return smprintf("%.0f%%%c", ((float)remcap / (float)descap) * 100, status);
+	return smprintf("%s: %02.0f°C", strip(sensorName), atof(sensorTemp) / 1000);
 }
 
 int
 main(void)
 {
 	char *status;
-	char *avgs;
 	char *tmbln;
+	char *tpac, *tc1, *tc2, *tc3, *tc4;
 
 	if (!(dpy = XOpenDisplay(NULL))) {
 		fprintf(stderr, "dwmstatus: cannot open display.\n");
@@ -176,13 +135,22 @@ main(void)
 	}
 
 	for (;;sleep(1)) {
-		avgs = loadavg();
-		tmbln = mktimes("%W %a %d %b %H:%M %Z %Y", tzlondon);
+		tpac = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp1_label", "temp1_input");
+		tc1 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp2_label", "temp2_input");
+		tc2 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp3_label", "temp3_input");
+		tc3 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp4_label", "temp4_input");
+		tc4 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp5_label", "temp5_input");
 
-		status = smprintf("Load averages: %s    |    Time: %s",avgs,tmbln);
+		tmbln = mktimes("%W %a %d %b %H:%M:%S %Z %Y", tzlondon);
+
+		status = smprintf("%s|%s|%s|%s|%s   |   Time: %s", tpac, tc1, tc2, tc3, tc4, tmbln);
 		setstatus(status);
 
-		free(avgs);
+		free(tpac);
+		free(tc1);
+		free(tc2);
+		free(tc3);
+		free(tc4);
 		free(tmbln);
 		free(status);
 	}
