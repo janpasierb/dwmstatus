@@ -24,6 +24,9 @@
 static char *basedir = "/dev";
 static char *filefmtincl = "sd";
 static char filefmtexcl[LEN] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'} ;
+static char *alab = "Added: ";
+static char *rlab = "Removed: ";
+static char *sep = ", ";
 static char *noblkchg = "-";
 
 char *tzlondon = "Europe/London";
@@ -79,22 +82,26 @@ blkprintf(int dvcsize, char **dvcs, blkstatt stat)
 	for(int i = 0; i < dvcsize; i++)	
 		statsize += strlen(dvcs[i]);
 	
-	blkstatus = malloc(statsize + (dvcsize - 1) * 2 + (ADD == stat ? 6 : 8));
+	blkstatus = malloc(statsize /* length of all device strings*/
+		+ (ADD == stat ? strlen(alab) : strlen(rlab)) /* length of Added/Removed label */
+		+ (dvcsize - 1) * strlen(sep) /* length of separator * number of devices - 1 
+											(no separator for single device change) */
+		+ 1); /* EOL */
 	if(!blkstatus)
 		return NULL;
 
 	blkstatus[0] = '\0';
 
 	if(ADD == stat)
-		strcat(blkstatus, "Added: ");
+		strcat(blkstatus, alab); 
 	else
-		strcat(blkstatus, "Removed: ");
+		strcat(blkstatus, rlab);
 
 	for(int i = 0; i < dvcsize; i++)
 	{
 		strcat(blkstatus, dvcs[i]);
 		if(dvcsize > 1 && i != dvcsize - 1)
-			strcat(blkstatus, ", ");
+			strcat(blkstatus, sep);
 	}
 
 	return blkstatus;
@@ -159,22 +166,27 @@ readfile(char *base, char *file)
 char*
 strip(char *name)
 {
-	size_t size = strlen(name) - 1;
-	char *ret = malloc(size);
-	return strncpy(ret, name, size);
+	char *ret = strstr(name, "\n");
+	if(ret != NULL)
+		strncpy(ret, "\0", 1);
+	return name;
 }
 
 char*
 gettemperature(char *base, char *sensorNameFile, char *sensorTempFile)
 {
-	char *sensorName, *sensorTemp;
+	char *sensorName, *sensorTemp, *tempfmt;
 
 	sensorName = readfile(base, sensorNameFile);
 	sensorTemp = readfile(base, sensorTempFile);
 
 	if(sensorName == NULL || sensorTemp == NULL)
 		return smprintf("");
-	return smprintf("%s: %02.0f°C", strip(sensorName), atof(sensorTemp) / 1000);
+	tempfmt = smprintf("%s: %02.0f°C", strip(sensorName), atof(sensorTemp) / 1000);
+	free(sensorName);
+	free(sensorTemp);
+
+	return tempfmt;
 }
 
 bool
@@ -224,7 +236,10 @@ readdsize(char *base)
 		closedir(dir);
 	}
 	else
+	{
+		closedir(dir);
 		return -1;
+	}
 	
 	return size;
 }
@@ -234,7 +249,7 @@ readd(char *base)
 {
 	char **files;
 	struct dirent *dc;	
-	DIR *dir = opendir(base);
+	DIR *dir = NULL;
 	int size = readdsize(basedir);
 
 	if(size < 1)
@@ -260,10 +275,10 @@ readd(char *base)
 		}
 	}
 
+	closedir(dir);
+
 	if(i > size)
 		return NULL;
-
-	closedir(dir);
 
 	return files;
 }
@@ -313,7 +328,8 @@ main(void)
 	char *tmbln;
 	char *tpac, *tc1, *tc2, *tc3, *tc4;
 	int origdsize, newdsize;
-	char **origfiles, **addedfiles, **removedfiles;
+	char **origfiles, **newfiles;
+	char **addedfiles, **removedfiles;
 	char *blkstatus;
 	blkstatt blkdevstat;
 
@@ -335,16 +351,17 @@ main(void)
 		tmbln = mktimes("%W %a %d %b %H:%M:%S %Z %Y", tzlondon);
 		
 		newdsize = readdsize(basedir);
+		newfiles = readd(basedir);
 
 		if(newdsize > origdsize)
 		{
-			addedfiles = compfiles(newdsize, readd(basedir), origdsize, origfiles); //added
+			addedfiles = compfiles(newdsize, newfiles, origdsize, origfiles); //added
 			blkstatus = blkprintf(newdsize - origdsize, addedfiles, ADD);
 			blkdevstat = ADD;	
 		}
 		else if(origdsize > newdsize)
 		{
-			removedfiles = compfiles(origdsize, origfiles, newdsize, readd(basedir)); //removed
+			removedfiles = compfiles(origdsize, origfiles, newdsize, newfiles); //removed
 			blkstatus = blkprintf(origdsize - newdsize, removedfiles, REMOVE);
 			blkdevstat = REMOVE;
 		}
@@ -367,6 +384,10 @@ main(void)
 		free(status);
 		free(blkstatus);
 
+		for(int i = 0; i < newdsize; i++)
+			free(newfiles[i]);
+		free(newfiles);
+
 		switch(blkdevstat)
 		{
 			case ADD:
@@ -384,6 +405,10 @@ main(void)
 				break;
 		}
 	}
+
+	for(int i = 0; i < origdsize; i++)
+		free(origfiles[i]);
+	free(origfiles);
 
 	XCloseDisplay(dpy);
 
