@@ -21,6 +21,7 @@
 
 #define	LEN	10
 
+static char *hwmon="/home/janek/hwinfo/hwmon";
 static char *basedir = "/dev";
 static char *filefmtincl = "sd";
 static char filefmtexcl[LEN] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'} ;
@@ -342,13 +343,13 @@ main(void)
 	origfiles = readd(basedir);
 
 	for (;;sleep(1)) { 
-		tpac = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp1_label", "temp1_input");
-		tc1 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp2_label", "temp2_input");
-		tc2 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp3_label", "temp3_input");
-		tc3 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp4_label", "temp4_input");
-		tc4 = gettemperature("/sys/devices/platform/coretemp.0/hwmon/hwmon0", "temp5_label", "temp5_input");
+		tpac = gettemperature(hwmon, "temp1_label", "temp1_input");
+		tc1 = gettemperature(hwmon, "temp2_label", "temp2_input");
+		tc2 = gettemperature(hwmon, "temp3_label", "temp3_input");
+		tc3 = gettemperature(hwmon, "temp4_label", "temp4_input");
+		tc4 = gettemperature(hwmon, "temp5_label", "temp5_input");
 
-		tmbln = mktimes("%W %a %d %b %H:%M:%S %Z %Y", tzlondon);
+		tmbln = mktimes("%a %d %b %H:%M %Z %Y", tzlondon);
 		
 		newdsize = readdsize(basedir);
 		newfiles = readd(basedir);
@@ -371,7 +372,7 @@ main(void)
 			blkdevstat = NOTHING;
 		}
 
-		status = smprintf("CPU load: %s | %s | %s | %s | %s | Block device changes: %s | Time: %s", 
+		status = smprintf("CPU temp: %s | %s | %s | %s | %s | Block device changes: %s | Time: %s",
 			tpac, tc1, tc2, tc3, tc4, blkstatus, tmbln);
 		setstatus(status);
 
